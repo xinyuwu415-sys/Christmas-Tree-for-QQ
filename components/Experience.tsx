@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, Environment } from '@react-three/drei';
+import { OrbitControls, Environment, Stars } from '@react-three/drei';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
 
@@ -79,6 +79,9 @@ const Experience: React.FC<ExperienceProps> = ({
     >
       <color attach="background" args={[COLORS.EMERALD_DARK]} />
       <fog attach="fog" args={[COLORS.EMERALD_DARK, 10, 30]} />
+      
+      {/* Starry Background */}
+      <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
 
       <CameraController handVector={handVector} appState={appState} />
       
