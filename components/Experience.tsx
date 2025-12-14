@@ -1,3 +1,4 @@
+
 import React, { useRef, useState, useEffect } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Environment, Stars } from '@react-three/drei';
@@ -45,11 +46,6 @@ const CameraController: React.FC<{ handVector: { x: number, y: number }, appStat
 
       // If portrait mode, pull back further to fit width of tree
       if (aspect < 1) {
-        // Simple heuristic: if width is small, we need more Z. 
-        // Tree width radius ~4 -> diameter 8. Plus margin ~10.
-        // Visible width at Z = 2 * Z * tan(22.5) * aspect.
-        // We want Visible Width >= 10.
-        // 10 = 2 * Z * 0.414 * aspect => Z = 12 / aspect.
         targetZ = Math.max(CONFIG.CAMERA_Z, 12 / aspect);
       }
 
@@ -106,7 +102,7 @@ const Experience: React.FC<ExperienceProps> = ({
 
       <EffectComposer disableNormalPass>
         <Bloom 
-          luminanceThreshold={0.5} 
+          luminanceThreshold={1.1} // Increased threshold to ensure photos (max 1.0) don't glow
           mipmapBlur 
           intensity={2.0} 
           radius={0.4}

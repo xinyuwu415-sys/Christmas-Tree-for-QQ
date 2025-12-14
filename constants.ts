@@ -1,3 +1,4 @@
+
 export const COLORS = {
   EMERALD_DARK: '#002010',
   EMERALD_LIGHT: '#006b3e',
@@ -18,15 +19,5 @@ export const CONFIG = {
   PINCH_THRESHOLD: 0.05,
 };
 
-// Placeholder images from Picsum
-export const DEFAULT_PHOTOS = [
-  'https://picsum.photos/id/10/400/600',
-  'https://picsum.photos/id/15/600/400',
-  'https://picsum.photos/id/20/400/400',
-  'https://picsum.photos/id/25/400/600',
-  'https://picsum.photos/id/40/400/600',
-  'https://picsum.photos/id/55/600/400',
-  'https://picsum.photos/id/76/400/400',
-  'https://picsum.photos/id/88/400/600',
-  'https://picsum.photos/id/102/600/400',
-];
+// Default photos cleared to ensure only local uploads are used
+export const DEFAULT_PHOTOS: string[] = [];

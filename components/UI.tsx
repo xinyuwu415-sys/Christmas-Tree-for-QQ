@@ -73,7 +73,8 @@ const UI: React.FC<Props> = ({ currentGesture, appState, onUpload, handVector })
         }
       `}</style>
 
-      <audio ref={audioRef} src="https://actions.google.com/sounds/v1/holidays/jingle_bells_instrumental.ogg" />
+      {/* Replaced with a reliable MP3 source (Jingle Bells by Kevin MacLeod) */}
+      <audio ref={audioRef} src="https://upload.wikimedia.org/wikipedia/commons/transcoded/5/5a/Jingle_Bells_Kevin_MacLeod.ogg/Jingle_Bells_Kevin_MacLeod.ogg.mp3" />
 
       {/* Hand Cursor */}
       {currentGesture !== GestureType.NONE && (
@@ -159,7 +160,7 @@ const UI: React.FC<Props> = ({ currentGesture, appState, onUpload, handVector })
               <span className="text-xl">🖐</span>
               <div>
                 <p className="font-bold text-white">Open Hand</p>
-                <p>Scatter Cloud</p>
+                <p>Scatter & Auto Play</p>
               </div>
            </div>
            <div className={`p-2 rounded flex items-center gap-2 ${appState === AppState.SCATTERED ? 'text-yellow-200' : ''}`}>
@@ -173,7 +174,7 @@ const UI: React.FC<Props> = ({ currentGesture, appState, onUpload, handVector })
               <span className="text-xl">👌</span>
               <div>
                 <p className="font-bold text-white">Pinch</p>
-                <p>Grab Photo</p>
+                <p>Pause / Grab</p>
               </div>
            </div>
         </div>

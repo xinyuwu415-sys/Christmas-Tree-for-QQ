@@ -1,4 +1,5 @@
-import React, { useRef, useMemo } from 'react';
+
+import React, { useRef, Suspense } from 'react';
 import { useFrame, useLoader } from '@react-three/fiber';
 import * as THREE from 'three';
 import { PhotoData, AppState } from '../types';
@@ -12,11 +13,13 @@ interface PhotoProps {
 
 const PhotoPlane: React.FC<PhotoProps> = ({ data, appState, isFocused }) => {
   const meshRef = useRef<THREE.Group>(null);
-  const materialRef = useRef<THREE.MeshBasicMaterial>(null);
+  const materialRef = useRef<THREE.MeshStandardMaterial>(null);
   
   // Load texture
   const texture = useLoader(THREE.TextureLoader, data.url);
   texture.minFilter = THREE.LinearFilter;
+  // Use sRGB encoding for correct color in StandardMaterial
+  texture.colorSpace = THREE.SRGBColorSpace;
   
   // Frame geometry
   const width = 1;
@@ -28,7 +31,10 @@ const PhotoPlane: React.FC<PhotoProps> = ({ data, appState, isFocused }) => {
 
     let targetPos = new THREE.Vector3();
     let targetScale = 1;
-    // We will handle rotation via LookAt for scattered/focus
+    
+    // Check if this photo should be zoomed (Front & Center)
+    // Applies in FOCUS state AND in SCATTERED state (Slideshow)
+    const shouldZoom = isFocused && (appState === AppState.FOCUS || appState === AppState.SCATTERED);
 
     if (appState === AppState.TREE) {
       targetPos.set(...data.position);
@@ -36,46 +42,65 @@ const PhotoPlane: React.FC<PhotoProps> = ({ data, appState, isFocused }) => {
       const angle = Math.atan2(targetPos.x, targetPos.z);
       meshRef.current.rotation.set(0, angle, 0);
       targetScale = 0.8;
-    } else if (appState === AppState.FOCUS && isFocused) {
-      // Bring to front center
-      targetPos.set(0, 0, 10); // Very close to camera
+    } else if (shouldZoom) {
+      // Bring to front center for viewing
+      const zDepth = appState === AppState.SCATTERED ? 10 : 12; 
+      targetPos.set(0, 0, zDepth); 
       meshRef.current.lookAt(state.camera.position);
       targetScale = 4.0;
-    } else if (appState === AppState.FOCUS && !isFocused) {
-      // Fade out/Push back others
-       targetPos.set(...data.randomPosition);
-       targetScale = 0.5;
-       meshRef.current.lookAt(state.camera.position);
     } else {
-      // SCATTERED
+      // Background / Scattered state
       targetPos.set(...data.randomPosition);
       
-      // Billboard effect: Face camera so user can see the photo
+      // Billboard effect: Face camera
       meshRef.current.lookAt(state.camera.position);
 
-      targetScale = 2.0; // Larger in scattered state to be visible
+      if (appState === AppState.FOCUS) {
+          // Manual focus background: shrink and push back
+          targetScale = 0.5;
+      } else {
+          // Normal Scattered background
+          targetScale = 2.0; 
+      }
       
       // Floating effect
-      targetPos.y += Math.sin(state.clock.elapsedTime + Number(data.id)) * 0.1;
+      targetPos.y += Math.sin(state.clock.elapsedTime + Number(data.id.split('-')[1] || 0)) * 0.1;
     }
 
     // Lerp transform
     meshRef.current.position.lerp(targetPos, CONFIG.TRANSITION_SPEED);
     meshRef.current.scale.setScalar(THREE.MathUtils.lerp(meshRef.current.scale.x, targetScale, CONFIG.TRANSITION_SPEED));
     
-    // Opacity handling for material (if needed)
+    // Opacity handling
     if (materialRef.current) {
-        const targetOpacity = (appState === AppState.FOCUS && !isFocused) ? 0.2 : 1.0;
+        let targetOpacity = 1.0;
+        
+        if (appState === AppState.FOCUS && !isFocused) {
+             // Deep dim for manual focus background
+            targetOpacity = 0.2;
+        } else if (appState === AppState.SCATTERED && !isFocused && !shouldZoom) {
+             // Slight dim for slideshow background
+             targetOpacity = 0.6;
+        }
+
         materialRef.current.opacity = THREE.MathUtils.lerp(materialRef.current.opacity, targetOpacity, 0.1);
     }
   });
 
   return (
     <group ref={meshRef}>
-      {/* Photo Content */}
+      {/* Photo Content - Using Standard Material to avoid Bloom/Glow */}
       <mesh position={[0, 0, 0.01]}>
         <planeGeometry args={[width, height]} />
-        <meshBasicMaterial ref={materialRef} map={texture} side={THREE.DoubleSide} transparent />
+        <meshStandardMaterial 
+            ref={materialRef} 
+            map={texture} 
+            side={THREE.DoubleSide} 
+            transparent 
+            roughness={0.8} // Matte finish like paper
+            metalness={0.1}
+            envMapIntensity={0.5}
+        />
       </mesh>
 
       {/* Frame/Backing */}
@@ -97,12 +122,13 @@ const PhotoCloud: React.FC<CloudProps> = ({ photos, appState, focusedPhotoId }) 
   return (
     <group>
       {photos.map((photo) => (
-        <PhotoPlane 
-          key={photo.id} 
-          data={photo} 
-          appState={appState}
-          isFocused={photo.id === focusedPhotoId}
-        />
+        <Suspense key={photo.id} fallback={null}>
+            <PhotoPlane 
+              data={photo} 
+              appState={appState}
+              isFocused={photo.id === focusedPhotoId}
+            />
+        </Suspense>
       ))}
     </group>
   );

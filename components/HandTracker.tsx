@@ -21,61 +21,73 @@ const HandTracker: React.FC<Props> = ({ onGestureDetect, onHandMove }) => {
   const gestureDebounceRef = useRef<number>(0);
 
   useEffect(() => {
-    if (!videoRef.current) return;
-
-    // Access global Hands class loaded via script tag
-    const Hands = (window as any).Hands;
-    
-    if (!Hands) {
-      console.error("MediaPipe Hands script not loaded");
-      return;
-    }
-
-    const hands = new Hands({
-      locateFile: (file: string) => {
-        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-      },
-    });
-
-    hands.setOptions({
-      maxNumHands: 1,
-      modelComplexity: 1,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5,
-    });
-
-    hands.onResults((results: Results) => {
-      if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
-        onGestureDetect(GestureType.NONE);
-        return;
-      }
-
-      const landmarks = results.multiHandLandmarks[0] as HandLandmark[];
-      
-      // 1. Detect Gesture
-      const gesture = detectGesture(landmarks);
-      
-      // Debounce gesture changes slightly to prevent flickering
-      const now = Date.now();
-      if (gesture !== lastGestureRef.current && now - gestureDebounceRef.current > 200) {
-        lastGestureRef.current = gesture;
-        gestureDebounceRef.current = now;
-        onGestureDetect(gesture);
-      } else if (gesture === lastGestureRef.current) {
-        onGestureDetect(gesture);
-      }
-
-      // 2. Track Hand Position for Camera
-      const vector = getHandVector(landmarks);
-      onHandMove(vector);
-    });
-
+    let isMounted = true;
+    let hands: any = null;
     let stream: MediaStream | null = null;
     let requestAnimationId: number;
     let isProcessing = false;
 
+    const setupHands = () => {
+      if (!videoRef.current) return null;
+
+      // Access global Hands class loaded via script tag
+      const Hands = (window as any).Hands;
+      
+      if (!Hands) {
+        console.error("MediaPipe Hands script not loaded");
+        return null;
+      }
+
+      const handsInstance = new Hands({
+        locateFile: (file: string) => {
+          // MUST match the version in index.html exactly
+          return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`;
+        },
+      });
+
+      handsInstance.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+      });
+
+      handsInstance.onResults((results: Results) => {
+        if (!isMounted) return;
+        
+        if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+          onGestureDetect(GestureType.NONE);
+          return;
+        }
+
+        const landmarks = results.multiHandLandmarks[0] as HandLandmark[];
+        
+        // 1. Detect Gesture
+        const gesture = detectGesture(landmarks);
+        
+        // Debounce gesture changes slightly to prevent flickering
+        const now = Date.now();
+        if (gesture !== lastGestureRef.current && now - gestureDebounceRef.current > 200) {
+          lastGestureRef.current = gesture;
+          gestureDebounceRef.current = now;
+          onGestureDetect(gesture);
+        } else if (gesture === lastGestureRef.current) {
+          onGestureDetect(gesture);
+        }
+
+        // 2. Track Hand Position for Camera
+        const vector = getHandVector(landmarks);
+        onHandMove(vector);
+      });
+      
+      return handsInstance;
+    };
+
     const startCamera = async () => {
       try {
+        hands = setupHands();
+        if (!hands) return;
+
         stream = await navigator.mediaDevices.getUserMedia({ 
             video: { 
                 width: { ideal: 640 }, 
@@ -84,9 +96,16 @@ const HandTracker: React.FC<Props> = ({ onGestureDetect, onHandMove }) => {
             } 
         });
         
+        // If unmounted while waiting for stream, clean up immediately
+        if (!isMounted) {
+            stream.getTracks().forEach(track => track.stop());
+            return;
+        }
+
         if (videoRef.current) {
             videoRef.current.srcObject = stream;
-            // Wait for video to be ready
+            
+            // Wait for video metadata to load and play
             await new Promise<void>((resolve) => {
                 if (videoRef.current) {
                     videoRef.current.onloadedmetadata = () => {
@@ -94,19 +113,30 @@ const HandTracker: React.FC<Props> = ({ onGestureDetect, onHandMove }) => {
                     };
                 }
             });
+            
+            if (!isMounted) return;
             setIsLoaded(true);
             
             const sendFrame = async () => {
+                if (!isMounted) return;
+
                 if (videoRef.current && videoRef.current.readyState >= 2 && !isProcessing) {
                    isProcessing = true;
                    try {
                      await hands.send({ image: videoRef.current });
                    } catch(e) {
+                     // Log error but don't crash app. 
+                     // 'Memory access out of bounds' usually happens if we send data to a closed instance.
+                     // The isMounted check above helps prevent that.
                      console.error("Hands send error", e);
                    }
                    isProcessing = false;
                 }
-                requestAnimationId = requestAnimationFrame(sendFrame);
+                
+                // Only request next frame if still mounted
+                if (isMounted) {
+                    requestAnimationId = requestAnimationFrame(sendFrame);
+                }
             }
             sendFrame();
         }
@@ -118,11 +148,18 @@ const HandTracker: React.FC<Props> = ({ onGestureDetect, onHandMove }) => {
     startCamera();
 
     return () => {
+      isMounted = false;
       if (requestAnimationId) cancelAnimationFrame(requestAnimationId);
       if (stream) {
           stream.getTracks().forEach(track => track.stop());
       }
-      hands.close();
+      if (hands) {
+          try {
+            hands.close();
+          } catch(e) {
+            console.error("Error closing hands instance:", e);
+          }
+      }
     };
   }, [onGestureDetect, onHandMove]);
 

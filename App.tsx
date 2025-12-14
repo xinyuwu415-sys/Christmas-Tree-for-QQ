@@ -118,6 +118,12 @@ const App: React.FC = () => {
 
   // Generate Photo Data
   const photos = useMemo<PhotoData[]>(() => {
+    // Simple pseudo-random function
+    const seededRandom = (seed: number) => {
+      const x = Math.sin(seed * 12.9898) * 43758.5453;
+      return x - Math.floor(x);
+    };
+
     return userPhotos.map((url, index) => {
        const y = ((index / userPhotos.length) * CONFIG.TREE_HEIGHT) - (CONFIG.TREE_HEIGHT / 2) + 1; 
        const radius = ((CONFIG.TREE_HEIGHT / 2 - y) * (CONFIG.TREE_RADIUS_BOTTOM / CONFIG.TREE_HEIGHT)) + 0.6; 
@@ -126,9 +132,11 @@ const App: React.FC = () => {
        const x = radius * Math.cos(theta);
        const z = radius * Math.sin(theta);
 
-       const rx = (Math.random() - 0.5) * 15;
-       const ry = (Math.random() - 0.5) * 15;
-       const rz = (Math.random() - 0.5) * 5 + 5; 
+       // Use deterministic random positions based on index
+       // This ensures that when new photos are added, existing photos don't jump around crazily
+       const rx = (seededRandom(index * 13) - 0.5) * 15;
+       const ry = (seededRandom(index * 29) - 0.5) * 15;
+       const rz = (seededRandom(index * 47) - 0.5) * 5 + 5; 
 
        return {
          id: `photo-${index}`,
@@ -140,6 +148,33 @@ const App: React.FC = () => {
     });
   }, [userPhotos]);
 
+  // Auto Slideshow in SCATTERED state
+  useEffect(() => {
+    let intervalId: ReturnType<typeof setInterval>;
+
+    if (appState === AppState.SCATTERED && photos.length > 0) {
+      // Start the loop. If no photo is focused, focus the first one immediately.
+      if (!focusedPhotoId) {
+        setFocusedPhotoId(photos[0].id);
+      }
+
+      intervalId = setInterval(() => {
+        setFocusedPhotoId((currentId) => {
+          const currentIndex = photos.findIndex(p => p.id === currentId);
+          // If the current ID is not found (maybe photos list changed), reset to 0
+          if (currentIndex === -1) return photos[0].id;
+          const nextIndex = (currentIndex + 1) % photos.length;
+          return photos[nextIndex].id;
+        });
+      }, 4000); // 4 seconds per photo
+    } else if (appState === AppState.TREE) {
+      // Clear focus when returning to tree
+      setFocusedPhotoId(null);
+    }
+
+    return () => clearInterval(intervalId);
+  }, [appState, photos]); // Removed focusedPhotoId from dependency to avoid resetting timer
+
   // Handle Gesture State Transitions
   const handleGestureDetect = useCallback((gesture: GestureType) => {
     setCurrentGesture(gesture);
@@ -148,30 +183,30 @@ const App: React.FC = () => {
       case GestureType.FIST:
         if (appState !== AppState.TREE) {
           setAppState(AppState.TREE);
-          setFocusedPhotoId(null);
         }
         break;
       case GestureType.OPEN_PALM:
         if (appState !== AppState.SCATTERED) {
           setAppState(AppState.SCATTERED);
-          setFocusedPhotoId(null);
+          // Focus will be handled by the effect
         }
         break;
       case GestureType.PINCH:
         if (appState === AppState.SCATTERED) {
           setAppState(AppState.FOCUS);
-          // Pick a random photo to focus on
-          // In a more advanced version, we could use handVector to pick the closest photo
-          const randomPhoto = photos[Math.floor(Math.random() * photos.length)];
-          setFocusedPhotoId(randomPhoto.id);
+          // Keep the currently auto-focused photo as the manual selection
+          if (!focusedPhotoId && photos.length > 0) {
+             setFocusedPhotoId(photos[0].id);
+          }
         }
         break;
     }
-  }, [appState, photos]);
+  }, [appState, photos, focusedPhotoId]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const newUrls = Array.from(e.target.files).map((file) => URL.createObjectURL(file as File));
+      // Append new photos to existing ones
       setUserPhotos(prev => [...prev, ...newUrls]);
     }
   };
